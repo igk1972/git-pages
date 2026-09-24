@@ -130,6 +130,16 @@ func ApplyTarPatch(manifest *Manifest, reader io.Reader, parents CreateParentsMo
 		case tar.TypeChar:
 			if header.Devmajor == 0 && header.Devminor == 0 {
 				delete(node.children, fileName)
+				// Rule files never remain in the manifest contents after being processed,
+				// so the rules parsed from them have to be removed instead.
+				if len(segments) == 1 {
+					switch fileName {
+					case HeadersFileName:
+						ClearHeaderRules(manifest)
+					case RedirectsFileName:
+						ClearRedirectRules(manifest)
+					}
+				}
 			} else {
 				AddProblem(manifest, header.Name,
 					"tar: unsupported chardev %d,%d", header.Devmajor, header.Devminor)

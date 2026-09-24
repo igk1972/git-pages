@@ -97,6 +97,12 @@ func validateRedirectRule(rule *redirects.Rule) error {
 	return nil
 }
 
+// See `ClearHeaderRules`.
+func ClearRedirectRules(manifest *Manifest) {
+	manifest.Redirects = []*RedirectRule{}
+	DropProblems(manifest, RedirectsFileName)
+}
+
 // Parses redirects file and injects rules into the manifest.
 func ProcessRedirectsFile(ctx context.Context, manifest *Manifest) error {
 	redirectsEntry := manifest.Contents[RedirectsFileName]
@@ -104,7 +110,7 @@ func ProcessRedirectsFile(ctx context.Context, manifest *Manifest) error {
 	if redirectsEntry == nil {
 		return nil
 	}
-	manifest.Redirects = []*RedirectRule{}
+	ClearRedirectRules(manifest)
 
 	data, err := GetEntryContents(ctx, redirectsEntry)
 	if errors.Is(err, ErrNotRegularFile) {

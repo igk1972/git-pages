@@ -93,14 +93,22 @@ func validateHeaderRule(rule headers.Rule) error {
 	return nil
 }
 
-// Parses redirects file and injects rules into the manifest.
+// Removes everything derived from a previously processed headers file, so that uploading a new
+// one (or a whiteout in its place) replaces the rules instead of appending to them.
+func ClearHeaderRules(manifest *Manifest) {
+	manifest.Headers = []*HeaderRule{}
+	manifest.BasicAuth = []*BasicAuthRule{}
+	DropProblems(manifest, HeadersFileName)
+}
+
+// Parses headers file and injects rules into the manifest.
 func ProcessHeadersFile(ctx context.Context, manifest *Manifest) error {
 	headersEntry := manifest.Contents[HeadersFileName]
 	delete(manifest.Contents, HeadersFileName)
 	if headersEntry == nil {
 		return nil
 	}
-	manifest.Headers = []*HeaderRule{}
+	ClearHeaderRules(manifest)
 
 	data, err := GetEntryContents(ctx, headersEntry)
 	if errors.Is(err, ErrNotRegularFile) {

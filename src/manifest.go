@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -143,6 +144,12 @@ func AddProblem(manifest *Manifest, pathName, format string, args ...any) error 
 		Cause: proto.String(cause),
 	})
 	return fmt.Errorf("%s: %s", pathName, cause)
+}
+
+func DropProblems(manifest *Manifest, pathName string) {
+	manifest.Problems = slices.DeleteFunc(manifest.Problems, func(problem *Problem) bool {
+		return problem.GetPath() == pathName
+	})
 }
 
 // Returns a map of git hash to entry. If `manifest` is nil, returns an empty map.
