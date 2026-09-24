@@ -235,6 +235,25 @@ next:
 	return
 }
 
+// Rules are matched against `fromURL` holding the path within the site, the same as `_headers`
+// rules, so that a `_redirects` file written for the site root also works for a project site.
+// `sitePrefix` (empty for an index site) is restored in the targets of 3xx redirects that stay
+// on the site; targets of rewrites are paths within the site already.
+func ApplySiteRedirectRules(
+	manifest *Manifest, fromURL *url.URL, sitePrefix string, kind RedirectKind,
+) (
+	rule *RedirectRule, toURL *url.URL, status int,
+) {
+	rule, toURL, status = ApplyRedirectRules(manifest, fromURL, kind)
+	if rule != nil && Is3xxHTTPStatus(status) {
+		ruleToURL, _ := url.Parse(rule.GetTo()) // pre-validated in `validateRedirectRule`
+		if ruleToURL.Host == "" {
+			toURL.Path = sitePrefix + toURL.Path
+		}
+	}
+	return
+}
+
 func redirectHasSplat(rule *RedirectRule) bool {
 	ruleFromURL, _ := url.Parse(*rule.From) // pre-validated in `validateRedirectRule`
 	ruleFromSegments := pathSegments(ruleFromURL.Path)

@@ -181,3 +181,30 @@ func TestApplyAllMatchingHeaderRules(t *testing.T) {
 		t.Errorf("basic auth must use the first matching rule: %s", rule.GetPath())
 	}
 }
+
+func TestSiteRelativeRedirectRules(t *testing.T) {
+	manifest := newRulesTestManifest()
+	applyPatch(t, manifest, tarMember{name: "_redirects", data: "" +
+		"/files/* https://cdn.example.net/files/:splat 301!\n" +
+		"/old-section/* /new-section/:splat 301\n" +
+		"/app/* /index.html 200\n"})
+
+	check := func(sitePrefix, path, expectedTo string, expectedStatus int) {
+		t.Helper()
+		fromURL := &url.URL{Host: "example.test", Path: path, RawQuery: "q=1"}
+		_, toURL, status := ApplySiteRedirectRules(manifest, fromURL, sitePrefix, RedirectAny)
+		if toURL == nil || toURL.String() != expectedTo || status != expectedStatus {
+			t.Errorf("%q + %s: expected %d %s, got %d %v",
+				sitePrefix, path, expectedStatus, expectedTo, status, toURL)
+		}
+	}
+	check("/site", "/files/a/b.pdf", "https://cdn.example.net/files/a/b.pdf?q=1", 301)
+	check("/site", "/old-section/page/", "//example.test/site/new-section/page/?q=1", 301)
+	check("", "/old-section/page/", "//example.test/new-section/page/?q=1", 301)
+	check("/site", "/app/deep/link", "//example.test/index.html?q=1", 200)
+
+	fromURL := &url.URL{Host: "example.test", Path: "/site/files/a.pdf"}
+	if rule, _, _ := ApplySiteRedirectRules(manifest, fromURL, "/site", RedirectAny); rule != nil {
+		t.Errorf("rules must not match the project prefix: %s", rule.GetFrom())
+	}
+}

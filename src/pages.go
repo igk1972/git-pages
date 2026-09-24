@@ -111,6 +111,7 @@ var zstdDecoder, _ = zstd.NewReader(nil)
 func getPage(w http.ResponseWriter, r *http.Request) error {
 	var err error
 	var sitePath string
+	var sitePrefix string // URL path the site is served at, without the trailing slash
 	var manifest *Manifest
 	var metadata ManifestMetadata
 
@@ -167,6 +168,7 @@ func getPage(w http.ResponseWriter, r *http.Request) error {
 					return nil
 				}
 				sitePath, manifest, metadata = projectPath, projectManifest, projectMetadata
+				sitePrefix = "/" + projectName
 			}
 		}
 	}
@@ -299,8 +301,10 @@ func getPage(w http.ResponseWriter, r *http.Request) error {
 			if entry != nil && entry.GetType() != Type_InvalidEntry {
 				redirectKind = RedirectForce
 			}
-			originalURL := (&url.URL{Host: r.Host}).ResolveReference(r.URL)
-			_, redirectURL, redirectStatus := ApplyRedirectRules(manifest, originalURL, redirectKind)
+			siteURL := (&url.URL{Host: r.Host}).ResolveReference(
+				&url.URL{Path: "/" + sitePath, RawQuery: r.URL.RawQuery})
+			_, redirectURL, redirectStatus := ApplySiteRedirectRules(
+				manifest, siteURL, sitePrefix, redirectKind)
 			if Is3xxHTTPStatus(redirectStatus) {
 				writeRedirect(w, redirectStatus, redirectURL.String())
 				return nil
