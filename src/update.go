@@ -12,6 +12,8 @@ import (
 
 const BlobReferencePrefix = "/git/blobs/"
 
+var ErrSiteNotFound = errors.New("site not found; create it with PUT first")
+
 type UnresolvedRefError struct {
 	missing []string
 }
@@ -188,6 +190,9 @@ func PartialUpdateFromArchive(
 	// create an atomic compare-and-swap operation.
 	oldManifest, oldMetadata, err := backend.GetManifest(ctx, webRoot,
 		GetManifestOptions{BypassCache: true})
+	if errors.Is(err, ErrObjectNotFound) {
+		err = ErrSiteNotFound
+	}
 	if err != nil {
 		logc.Printf(ctx, "patch %s err: %s", webRoot, err)
 		return UpdateResult{UpdateError, nil, err}

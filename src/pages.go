@@ -663,6 +663,8 @@ func reportUpdateResult(w http.ResponseWriter, r *http.Request, result UpdateRes
 			w.WriteHeader(http.StatusUnprocessableEntity)
 		} else if errors.Is(result.err, ErrMalformedPatch) {
 			w.WriteHeader(http.StatusUnprocessableEntity)
+		} else if errors.Is(result.err, ErrSiteNotFound) {
+			w.WriteHeader(http.StatusNotFound)
 		} else if errors.Is(result.err, ErrPreconditionFailed) {
 			w.WriteHeader(http.StatusPreconditionFailed)
 		} else if errors.Is(result.err, ErrWriteConflict) {
