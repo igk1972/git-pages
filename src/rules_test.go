@@ -208,3 +208,22 @@ func TestSiteRelativeRedirectRules(t *testing.T) {
 		t.Errorf("rules must not match the project prefix: %s", rule.GetFrom())
 	}
 }
+
+func TestCompareManifestDetectsRuleChanges(t *testing.T) {
+	left := newRulesTestManifest()
+	applyPatch(t, left, tarMember{name: "_headers", data: "/*\n  X-Robots-Tag: noindex\n"})
+	right := newRulesTestManifest()
+	applyPatch(t, right, tarMember{name: "_headers", data: "/*\n  X-Robots-Tag: noindex\n"})
+	if !CompareManifest(left, right) {
+		t.Errorf("manifests with the same rules must be equal")
+	}
+	applyPatch(t, right, tarMember{name: "_headers", data: "/*\n  X-Robots-Tag: nosnippet\n"})
+	if CompareManifest(left, right) {
+		t.Errorf("manifests with different header rules must differ")
+	}
+	applyPatch(t, right, tarMember{name: "_headers", data: "/*\n  X-Robots-Tag: noindex\n"})
+	applyPatch(t, right, tarMember{name: "_redirects", data: "/a /b 301\n"})
+	if CompareManifest(left, right) {
+		t.Errorf("manifests with different redirect rules must differ")
+	}
+}

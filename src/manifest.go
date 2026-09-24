@@ -60,8 +60,20 @@ func IsManifestEmpty(manifest *Manifest) bool {
 	panic(fmt.Errorf("malformed manifest %v", manifest))
 }
 
-// Returns `true` if `left` and `right` contain the same files with the same types and data.
+func equalMessages[Message proto.Message](left, right []Message) bool {
+	return slices.EqualFunc(left, right, func(left, right Message) bool {
+		return proto.Equal(left, right)
+	})
+}
+
+// Returns `true` if `left` and `right` contain the same files with the same types and data,
+// and the same rules parsed from `_redirects` and `_headers`.
 func CompareManifest(left *Manifest, right *Manifest) bool {
+	if !equalMessages(left.Redirects, right.Redirects) ||
+		!equalMessages(left.Headers, right.Headers) ||
+		!equalMessages(left.BasicAuth, right.BasicAuth) {
+		return false
+	}
 	if len(left.Contents) != len(right.Contents) {
 		return false
 	}
