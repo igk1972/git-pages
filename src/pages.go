@@ -98,6 +98,13 @@ func getWebRoot(r *http.Request) (string, error) {
 	return makeWebRoot(host, projectName), nil
 }
 
+// The project prefix is left out of redirects within a site: the site is served at the root of
+// its public domain by a proxy, and proxies generally can't rewrite `Location:` reliably.
+// Leading slashes are collapsed so that the result never becomes a `//host/...` reference.
+func siteRedirectURL(sitePath string, rawQuery string) string {
+	return (&url.URL{Path: "/" + strings.TrimLeft(sitePath, "/"), RawQuery: rawQuery}).String()
+}
+
 func writeRedirect(w http.ResponseWriter, code int, path string) {
 	w.Header().Set("Location", path)
 	w.WriteHeader(code)
@@ -111,7 +118,6 @@ var zstdDecoder, _ = zstd.NewReader(nil)
 func getPage(w http.ResponseWriter, r *http.Request) error {
 	var err error
 	var sitePath string
-	var sitePrefix string // URL path the site is served at, without the trailing slash
 	var manifest *Manifest
 	var metadata ManifestMetadata
 
@@ -164,11 +170,10 @@ func getPage(w http.ResponseWriter, r *http.Request) error {
 			)
 			if err == nil {
 				if !hasProjectSlash {
-					writeRedirect(w, http.StatusFound, r.URL.Path+"/")
+					writeRedirect(w, http.StatusFound, siteRedirectURL("", r.URL.RawQuery))
 					return nil
 				}
 				sitePath, manifest, metadata = projectPath, projectManifest, projectMetadata
-				sitePrefix = "/" + projectName
 			}
 		}
 	}
@@ -303,8 +308,7 @@ func getPage(w http.ResponseWriter, r *http.Request) error {
 			}
 			siteURL := (&url.URL{Host: r.Host}).ResolveReference(
 				&url.URL{Path: "/" + sitePath, RawQuery: r.URL.RawQuery})
-			_, redirectURL, redirectStatus := ApplySiteRedirectRules(
-				manifest, siteURL, sitePrefix, redirectKind)
+			_, redirectURL, redirectStatus := ApplyRedirectRules(manifest, siteURL, redirectKind)
 			if Is3xxHTTPStatus(redirectStatus) {
 				writeRedirect(w, redirectStatus, redirectURL.String())
 				return nil
@@ -352,8 +356,7 @@ func getPage(w http.ResponseWriter, r *http.Request) error {
 			} else {
 				// redirect from `dir` to `dir/`, otherwise when `dir/index.html` is served,
 				// links in it will have the wrong base URL
-				newPath := r.URL.Path + "/"
-				writeRedirect(w, http.StatusFound, newPath)
+				writeRedirect(w, http.StatusFound, siteRedirectURL(sitePath+"/", r.URL.RawQuery))
 				return nil
 			}
 		} else if entry.GetType() == Type_Symlink {

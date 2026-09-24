@@ -154,14 +154,6 @@ func pathSegments(path string) []string {
 	return strings.Split(strings.TrimPrefix(path, "/"), "/")
 }
 
-func toOrFromComponent(to, from string) string {
-	if to == "" {
-		return from
-	} else {
-		return to
-	}
-}
-
 type RedirectKind int
 
 const (
@@ -222,35 +214,21 @@ next:
 			}
 		}
 		toURL = &url.URL{
-			Scheme:   toOrFromComponent(ruleToURL.Scheme, fromURL.Scheme),
-			Host:     toOrFromComponent(ruleToURL.Host, fromURL.Host),
 			Path:     "/" + strings.Join(toSegments, "/"),
 			RawQuery: fromURL.RawQuery,
+		}
+		if ruleToURL.Host != "" {
+			toURL.Scheme, toURL.Host = ruleToURL.Scheme, ruleToURL.Host
+		} else {
+			// A path within the site, the same as in `siteRedirectURL`; an empty splat segment
+			// could otherwise produce a `//host/...` reference.
+			toURL.Path = "/" + strings.TrimLeft(toURL.Path, "/")
 		}
 		status = int(*rule.Status)
 		return
 	}
 	// no redirect found
 	rule = nil
-	return
-}
-
-// Rules are matched against `fromURL` holding the path within the site, the same as `_headers`
-// rules, so that a `_redirects` file written for the site root also works for a project site.
-// `sitePrefix` (empty for an index site) is restored in the targets of 3xx redirects that stay
-// on the site; targets of rewrites are paths within the site already.
-func ApplySiteRedirectRules(
-	manifest *Manifest, fromURL *url.URL, sitePrefix string, kind RedirectKind,
-) (
-	rule *RedirectRule, toURL *url.URL, status int,
-) {
-	rule, toURL, status = ApplyRedirectRules(manifest, fromURL, kind)
-	if rule != nil && Is3xxHTTPStatus(status) {
-		ruleToURL, _ := url.Parse(rule.GetTo()) // pre-validated in `validateRedirectRule`
-		if ruleToURL.Host == "" {
-			toURL.Path = sitePrefix + toURL.Path
-		}
-	}
 	return
 }
 

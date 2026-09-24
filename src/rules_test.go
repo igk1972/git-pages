@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"testing"
@@ -187,26 +189,21 @@ func TestSiteRelativeRedirectRules(t *testing.T) {
 	applyPatch(t, manifest, tarMember{name: "_redirects", data: "" +
 		"/files/* https://cdn.example.net/files/:splat 301!\n" +
 		"/old-section/* /new-section/:splat 301\n" +
+		"/go/* /:splat 302\n" +
 		"/app/* /index.html 200\n"})
 
-	check := func(sitePrefix, path, expectedTo string, expectedStatus int) {
+	check := func(path, expectedTo string, expectedStatus int) {
 		t.Helper()
 		fromURL := &url.URL{Host: "example.test", Path: path, RawQuery: "q=1"}
-		_, toURL, status := ApplySiteRedirectRules(manifest, fromURL, sitePrefix, RedirectAny)
+		_, toURL, status := ApplyRedirectRules(manifest, fromURL, RedirectAny)
 		if toURL == nil || toURL.String() != expectedTo || status != expectedStatus {
-			t.Errorf("%q + %s: expected %d %s, got %d %v",
-				sitePrefix, path, expectedStatus, expectedTo, status, toURL)
+			t.Errorf("%s: expected %d %s, got %d %v", path, expectedStatus, expectedTo, status, toURL)
 		}
 	}
-	check("/site", "/files/a/b.pdf", "https://cdn.example.net/files/a/b.pdf?q=1", 301)
-	check("/site", "/old-section/page/", "//example.test/site/new-section/page/?q=1", 301)
-	check("", "/old-section/page/", "//example.test/new-section/page/?q=1", 301)
-	check("/site", "/app/deep/link", "//example.test/index.html?q=1", 200)
-
-	fromURL := &url.URL{Host: "example.test", Path: "/site/files/a.pdf"}
-	if rule, _, _ := ApplySiteRedirectRules(manifest, fromURL, "/site", RedirectAny); rule != nil {
-		t.Errorf("rules must not match the project prefix: %s", rule.GetFrom())
-	}
+	check("/files/a/b.pdf", "https://cdn.example.net/files/a/b.pdf?q=1", 301)
+	check("/old-section/page/", "/new-section/page/?q=1", 301)
+	check("/go//evil.example/x", "/evil.example/x?q=1", 302)
+	check("/app/deep/link", "/index.html?q=1", 200)
 }
 
 func TestCompareManifestDetectsRuleChanges(t *testing.T) {
@@ -226,4 +223,42 @@ func TestCompareManifestDetectsRuleChanges(t *testing.T) {
 	if CompareManifest(left, right) {
 		t.Errorf("manifests with different redirect rules must differ")
 	}
+}
+
+func TestProjectSiteRedirectsOmitPrefix(t *testing.T) {
+	var err error
+	if config, err = Configure(); err != nil {
+		t.Fatal(err)
+	}
+	if backend, err = NewFSBackend(context.Background(), &FSConfig{Root: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	domainCache = &dummyDomainCache{}
+
+	manifest := &Manifest{Contents: map[string]*Entry{"": NewManifestEntry(Type_Directory, nil)}}
+	applyPatch(t, manifest,
+		tarMember{name: "_redirects", data: "" +
+			"/old/* /en/:splat 301\n" +
+			"/files/* https://cdn.example.net/files/:splat 301!\n"},
+		tarMember{name: "en/about/index.html", data: "about"})
+	result := Update(context.Background(), "example.test/site", nil, manifest, ModifyManifestOptions{})
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+
+	check := func(target string, expectedStatus int, expectedLocation string) {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		ServePages(recorder, httptest.NewRequest(http.MethodGet, "http://example.test"+target, nil))
+		location := recorder.Header().Get("Location")
+		if recorder.Code != expectedStatus || location != expectedLocation {
+			t.Errorf("%s: expected %d %q, got %d %q",
+				target, expectedStatus, expectedLocation, recorder.Code, location)
+		}
+	}
+	check("/site?q=1", http.StatusFound, "/?q=1")
+	check("/site/en/about?q=1", http.StatusFound, "/en/about/?q=1")
+	check("/site/en/about/", http.StatusOK, "")
+	check("/site/old/about/?q=1", http.StatusMovedPermanently, "/en/about/?q=1")
+	check("/site/files/a.pdf", http.StatusMovedPermanently, "https://cdn.example.net/files/a.pdf")
 }
