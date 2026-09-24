@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"net/url"
 	"slices"
 	"testing"
 )
@@ -149,5 +150,34 @@ func TestPatchWhiteoutOfNestedRuleFileKeepsRules(t *testing.T) {
 	applyPatch(t, manifest, tarMember{name: "docs/_headers", whiteout: true})
 	if len(manifest.GetHeaders()) != 1 {
 		t.Errorf("rules must be kept: %v", headerRulePaths(manifest))
+	}
+}
+
+func TestApplyAllMatchingHeaderRules(t *testing.T) {
+	manifest := newRulesTestManifest()
+	applyPatch(t, manifest, tarMember{name: "_headers", data: "" +
+		"/pdf-map.json\n  Cache-Control: public, max-age=300\n" +
+		"/*\n  X-Robots-Tag: noindex\n" +
+		"/private/*\n  X-Robots-Tag: nosnippet\n  Basic-Auth: a:b\n" +
+		"/*\n  Basic-Auth: c:d\n"})
+
+	check := func(path string, name string, expected []string) {
+		t.Helper()
+		headers, err := ApplyHeaderRules(manifest, &url.URL{Path: path})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := headers.Values(name); !slices.Equal(got, expected) {
+			t.Errorf("%s: %s: expected %q, got %q", path, name, expected, got)
+		}
+	}
+	check("pdf-map.json", "Cache-Control", []string{"public, max-age=300"})
+	check("pdf-map.json", "X-Robots-Tag", []string{"noindex"})
+	check("index.html", "Cache-Control", nil)
+	check("private/doc.pdf", "X-Robots-Tag", []string{"noindex", "nosnippet"})
+
+	rule := matchPathRules(manifest.GetBasicAuth(), &url.URL{Path: "private/doc.pdf"})
+	if rule.GetPath() != "/private/*" {
+		t.Errorf("basic auth must use the first matching rule: %s", rule.GetPath())
 	}
 }

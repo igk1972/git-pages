@@ -161,9 +161,6 @@ func ProcessHeadersFile(ctx context.Context, manifest *Manifest) error {
 				})
 			}
 		}
-		// Note that we may add an empty `headerMap` here even if only credentials are defined.
-		// This is intentional: in `_headers` files processing terminates at the first matching
-		// clause, and Netlify mixes Basic-Auth with all the other headers.
 		manifest.Headers = append(manifest.Headers, &HeaderRule{
 			Path:      proto.String(rule.Path),
 			HeaderMap: headerMap,
@@ -196,42 +193,52 @@ func CollectHeadersFile(manifest *Manifest) string {
 	return headers.Must(headers.UnparseString(headersRules))
 }
 
+func matchesPathRule(rulePath string, fromSegments []string) bool {
+	ruleURL, _ := url.Parse(rulePath) // pre-validated in `validateHeaderRule`
+	ruleSegments := pathSegments(ruleURL.Path)
+	if ruleSegments[len(ruleSegments)-1] != "*" {
+		if len(ruleSegments) < len(fromSegments) {
+			return false
+		}
+	}
+	for index, ruleFromSegment := range ruleSegments {
+		if ruleFromSegment == "*" {
+			break
+		}
+		if len(fromSegments) <= index {
+			return false
+		}
+		if fromSegments[index] != ruleFromSegment {
+			return false
+		}
+	}
+	return true
+}
+
 func matchPathRules[
 	Rule interface{ GetPath() string },
 ](rules []Rule, url *url.URL) (matched Rule) {
 	fromSegments := pathSegments(url.Path)
-next:
 	for _, rule := range rules {
-		// check if the rule matches url
-		ruleURL, _ := url.Parse(rule.GetPath()) // pre-validated in `validateHeaderRule`
-		ruleSegments := pathSegments(ruleURL.Path)
-		if ruleSegments[len(ruleSegments)-1] != "*" {
-			if len(ruleSegments) < len(fromSegments) {
-				continue
-			}
+		if matchesPathRule(rule.GetPath(), fromSegments) {
+			return rule
 		}
-		for index, ruleFromSegment := range ruleSegments {
-			if ruleFromSegment == "*" {
-				break
-			}
-			if len(fromSegments) <= index {
-				continue next
-			}
-			if fromSegments[index] != ruleFromSegment {
-				continue next
-			}
-		}
-		matched = rule
-		break
 	}
 	return
 }
 
+// Like Netlify and Cloudflare Pages, applies every matching rule rather than only the first one.
+// A header set by several rules gets all of their values, which HTTP treats the same as a single
+// comma-separated value.
 func ApplyHeaderRules(manifest *Manifest, url *url.URL) (
 	headers http.Header, err error,
 ) {
 	headers = http.Header{}
-	if rule := matchPathRules(manifest.Headers, url); rule != nil {
+	fromSegments := pathSegments(url.Path)
+	for _, rule := range manifest.Headers {
+		if !matchesPathRule(rule.GetPath(), fromSegments) {
+			continue
+		}
 		// the rule has matched url, validate headers against up-to-date policy
 		for _, header := range rule.GetHeaderMap() {
 			name := header.GetName()
