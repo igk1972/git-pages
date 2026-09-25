@@ -14,6 +14,7 @@ import (
 type tarMember struct {
 	name     string
 	data     string
+	link     string
 	whiteout bool
 }
 
@@ -23,9 +24,13 @@ func applyPatch(t *testing.T, manifest *Manifest, members ...tarMember) {
 	writer := tar.NewWriter(&buffer)
 	for _, member := range members {
 		header := &tar.Header{Name: member.name, Mode: 0644}
-		if member.whiteout {
+		switch {
+		case member.whiteout:
 			header.Typeflag = tar.TypeChar
-		} else {
+		case member.link != "":
+			header.Typeflag = tar.TypeSymlink
+			header.Linkname = member.link
+		default:
 			header.Typeflag = tar.TypeReg
 			header.Size = int64(len(member.data))
 		}

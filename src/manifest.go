@@ -118,7 +118,7 @@ func NewManifestEntry(type_ Type, data []byte) *Entry {
 	return entry
 }
 
-func AddFile(manifest *Manifest, fileName string, data []byte) *Entry {
+func NewFileEntry(data []byte) *Entry {
 	// Fill in `git_hash` even for files not originating from git using the SHA256 algorithm;
 	// we use this primarily for incremental archive uploads, but when support for git SHA256
 	// repositories is complete, archive uploads and git checkouts will have cross-support for
@@ -127,6 +127,11 @@ func AddFile(manifest *Manifest, fileName string, data []byte) *Entry {
 	hasher.Write(data)
 	entry := NewManifestEntry(Type_InlineFile, data)
 	entry.GitHash = proto.String(hasher.Sum().String())
+	return entry
+}
+
+func AddFile(manifest *Manifest, fileName string, data []byte) *Entry {
+	entry := NewFileEntry(data)
 	manifest.Contents[fileName] = entry
 	return entry
 }

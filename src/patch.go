@@ -107,9 +107,7 @@ func ApplyTarPatch(manifest *Manifest, reader io.Reader, parents CreateParentsMo
 			if err != nil {
 				return fmt.Errorf("tar: %s: %w", header.Name, err)
 			}
-			node.children[fileName] = &Node{
-				entry: NewManifestEntry(Type_InlineFile, fileData),
-			}
+			node.children[fileName] = &Node{entry: NewFileEntry(fileData)}
 		case tar.TypeSymlink:
 			if hash, found := strings.CutPrefix(header.Linkname, BlobReferencePrefix); found {
 				if entry, found := index[hash]; found {
