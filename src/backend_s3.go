@@ -264,10 +264,17 @@ func (s3 *S3Backend) HasFeature(ctx context.Context, feature BackendFeature) boo
 	return isOn
 }
 
-func (s3 *S3Backend) EnableFeature(ctx context.Context, feature BackendFeature) error {
-	_, err := s3.client.PutObject(ctx, s3.bucket, storeFeatureObjectName(feature),
-		&bytes.Reader{}, 0, minio.PutObjectOptions{})
+// putEmptyObject writes a zero-length marker object. Over plain HTTP minio-go signs an empty
+// body as a stream and sends it chunked without Content-Length, which S3 servers stricter than
+// AWS (rclone serve s3) reject with 411; an unsigned payload goes out with Content-Length: 0.
+func (s3 *S3Backend) putEmptyObject(ctx context.Context, name string) error {
+	_, err := s3.client.PutObject(ctx, s3.bucket, name, &bytes.Reader{}, 0,
+		minio.PutObjectOptions{DisableContentSha256: true})
 	return err
+}
+
+func (s3 *S3Backend) EnableFeature(ctx context.Context, feature BackendFeature) error {
+	return s3.putEmptyObject(ctx, storeFeatureObjectName(feature))
 }
 
 func (s3 *S3Backend) GetBlob(
@@ -772,8 +779,7 @@ func (s3 *S3Backend) CreateDomain(ctx context.Context, domain string) error {
 		return err
 	}
 
-	_, err = s3.client.PutObject(ctx, s3.bucket, domainCheckObjectName(domain),
-		&bytes.Reader{}, 0, minio.PutObjectOptions{})
+	err = s3.putEmptyObject(ctx, domainCheckObjectName(domain))
 	if err != nil {
 		return err
 	}
@@ -786,9 +792,7 @@ func (s3 *S3Backend) CreateDomain(ctx context.Context, domain string) error {
 func (s3 *S3Backend) FreezeDomain(ctx context.Context, domain string) error {
 	logc.Printf(ctx, "s3: freeze domain %s\n", domain)
 
-	_, err := s3.client.PutObject(ctx, s3.bucket, domainFrozenObjectName(domain),
-		&bytes.Reader{}, 0, minio.PutObjectOptions{})
-	return err
+	return s3.putEmptyObject(ctx, domainFrozenObjectName(domain))
 
 }
 
@@ -818,9 +822,7 @@ func (s3 *S3Backend) HaveDomainsChanged(ctx context.Context, since time.Time) (b
 
 func (s3 *S3Backend) bumpLastDomainUpdateTimestamp(ctx context.Context) error {
 	logc.Print(ctx, "s3: bumping last domain update timestamp")
-	_, err := s3.client.PutObject(ctx, s3.bucket, lastDomainUpdateObjectName,
-		&bytes.Reader{}, 0, minio.PutObjectOptions{})
-	return err
+	return s3.putEmptyObject(ctx, lastDomainUpdateObjectName)
 }
 
 func auditObjectName(id AuditID) string {
@@ -951,9 +953,7 @@ func (s3 *S3Backend) GetAuditLogRecords(
 func (s3 *S3Backend) DetachAuditRecord(ctx context.Context, id AuditID) error {
 	logc.Printf(ctx, "s3: detach audit record %s\n", id)
 
-	_, err := s3.client.PutObject(ctx, s3.bucket, auditDetachedObjectName(id),
-		&bytes.Reader{}, 0, minio.PutObjectOptions{})
-	return err
+	return s3.putEmptyObject(ctx, auditDetachedObjectName(id))
 }
 
 func (s3 *S3Backend) ExpireAuditRecord(ctx context.Context, id AuditID) error {
