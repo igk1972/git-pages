@@ -581,7 +581,9 @@ func (s3 *S3Backend) checkManifestPrecondition(
 		return err
 	}
 
-	if !opts.IfUnmodifiedSince.IsZero() && stat.LastModified.Compare(opts.IfUnmodifiedSince) > 0 {
+	etagMatches := opts.IfMatch != "" && stat.ETag == opts.IfMatch
+	if !etagMatches && !opts.IfUnmodifiedSince.IsZero() &&
+		stat.LastModified.Compare(opts.IfUnmodifiedSince) > 0 {
 		return fmt.Errorf("%w: If-Unmodified-Since", ErrPreconditionFailed)
 	}
 	if opts.IfMatch != "" && stat.ETag != opts.IfMatch {
